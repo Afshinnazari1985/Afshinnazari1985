@@ -1,132 +1,158 @@
 # CLAUDE.md
 
-This file provides guidance for AI assistants (Claude Code and similar tools) working in this repository.
+Guidance for AI assistants working in this repository.
 
 ---
 
 ## Repository Overview
 
-- **Owner:** Afshinnazari1985
-- **Remote:** `http://local_proxy@127.0.0.1:33421/git/Afshinnazari1985/Afshinnazari1985`
-- **State:** Freshly initialized — no source code has been committed yet.
+- **Owner:** Afshin Nazari (UiT The Arctic University of Norway)
+- **Project:** MILP Optimal Sizing & Energy Management of BESS and BTES for a Narvik Arctic Grid with AI Data Center
+- **Language:** MATLAB (Optimization Toolbox required — `intlinprog`)
 
-> This file should be updated as the project grows. Sections marked `[TODO]` are placeholders awaiting content.
+## System Description
 
----
+Modified IEEE 14-bus grid in Narvik, Norway. Key components:
 
-## Git Workflow
-
-### Branch Naming Conventions
-
-| Prefix | Purpose |
-|--------|---------|
-| `claude/` | Branches created and managed by AI assistants |
-| `feature/` | New features |
-| `fix/` | Bug fixes |
-| `chore/` | Maintenance, refactoring, dependency updates |
-| `docs/` | Documentation-only changes |
-
-AI assistant branches follow the pattern: `claude/<task-slug>-<session-id>`
-
-### Commit Messages
-
-Write clear, imperative commit messages:
-
-```
-<type>: <short summary>
-
-Optional longer explanation of why the change was made.
-```
-
-Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`
-
-Examples:
-- `feat: add user authentication endpoint`
-- `fix: handle null response from payment API`
-- `docs: update CLAUDE.md with project structure`
-
-### Push Workflow
-
-Always push to the designated feature branch:
-
-```bash
-git push -u origin <branch-name>
-```
-
-- Branches must start with `claude/` for AI-managed branches.
-- Never push directly to `main` or `master` without explicit permission.
-- On network failure, retry up to 4 times with exponential backoff: 2s, 4s, 8s, 16s.
-
----
-
-## Development Setup
-
-[TODO: Document how to install dependencies and set up the local environment once the project is initialized.]
-
-```bash
-# Example — update with actual commands
-# npm install        (Node.js projects)
-# pip install -r requirements.txt  (Python projects)
-# cargo build        (Rust projects)
-```
-
----
+| Component | Specification |
+|-----------|---------------|
+| Hakvik Hydro | 9.9 MW reservoir (Nordkraft) |
+| Batsvatn Hydro | 30 MW reservoir (user-defined) |
+| Sildvik Hydro | 63 MW reservoir (Statkraft) |
+| Nygardsfjellet Wind | 32.2 MW (14 x Siemens 2.3 MW) |
+| AI Data Center | 20 MW electrical load, 70% waste heat recovery |
+| BESS | Li-ion (Tesla Megapack candidates: 0–27.3 MWh) |
+| BTES | Borehole Thermal Energy Storage (candidates: 0–300 MWhth) |
+| Heat Pump | COP = 3, unlimited sizing |
+| District Heating | Arctic winter demand, peak ~20 MWth |
 
 ## Project Structure
 
-[TODO: Describe the directory layout once source files are added. Example format:]
-
 ```
 /
-├── src/           # Application source code
-├── tests/         # Test files
-├── docs/          # Documentation
-├── scripts/       # Utility/build scripts
-└── CLAUDE.md      # This file
+├── MILP_BESS_BTES_Narvik.m          # Main optimization script (single file)
+├── load_Narvik_data.m                # Data loading function (to be extracted)
+├── ninja_wind_68.4500_17.3900_corrected.csv   # [Optional] Renewables.ninja wind data
+├── nordpool_NO4_2024.csv             # [Optional] Nord Pool electricity prices
+├── entsoe_NO4_load_2024.csv          # [Optional] ENTSO-E load data
+├── when2heat_singleindex.csv         # [Optional] When2Heat heating demand
+├── entsoe_NO4_hydro_2024.csv         # [Optional] ENTSO-E hydro generation
+└── CLAUDE.md                         # This file
 ```
 
----
+CSV files are optional — the code falls back to synthetic profiles if absent.
 
-## Running Tests
+## MILP Formulation Summary
 
-[TODO: Document test commands once a test framework is configured.]
+**Method:** Discrete candidate sizes eliminate bilinear SOC * E terms. Absolute stored energy W(t) [MWh] replaces fractional SOC. All constraints are linear → pure MILP.
 
-```bash
-# Example — update with actual commands
-# npm test
-# pytest
-# cargo test
+**Decision variables** (packed into single vector `x` for `intlinprog`):
+- `y_B(s)` — binary: BESS candidate selection (exactly one selected)
+- `y_TES(s)` — binary: BTES candidate selection (exactly one selected)
+- `P_B_max`, `H_TES_max` — continuous: power/thermal ratings [MW]
+- `P_ch_B(t)`, `P_dis_B(t)`, `W_B(t)` — BESS charge/discharge/energy
+- `H_ch_TES(t)`, `H_dis_TES(t)`, `W_TES(t)` — BTES charge/discharge/energy
+- `z_ch_B(t)`, `z_dis_B(t)`, `z_ch_TES(t)`, `z_dis_TES(t)` — binary indicators
+- `H_HP(t)`, `P_HP(t)`, `H_WH(t)` — heat pump and waste heat
+- `P_buy(t)`, `P_curt(t)`, `H_unmet(t)` — grid purchase, curtailment, unmet heat
+
+**Objective:** Minimize annualized total cost = Investment (CRF) + O&M + 365 * daily operational costs.
+
+**Key constraints:** Electrical/thermal power balance, SOC dynamics, C-rate limits, no simultaneous charge/discharge (big-M), SOC bounds, cyclic SOC (relaxed), waste heat availability.
+
+## Running the Code
+
+Requires MATLAB with Optimization Toolbox.
+
+```matlab
+% Open MATLAB, navigate to project directory, then:
+run('MILP_BESS_BTES_Narvik.m')
 ```
 
+Solver settings: `intlinprog` with 600s time limit, 1% relative gap tolerance, advanced preprocessing.
+
+## Known Issues (Code Review — 2026-03-03)
+
+### CRITICAL — Prevents Execution
+
+1. **Function `load_Narvik_data()` defined mid-script.** MATLAB requires local functions at the END of a script file. Current placement causes a syntax error. **Fix:** Move the function definition block to the end of the file, or extract to `load_Narvik_data.m`.
+
+### BUGS — Incorrect Results
+
+2. **Hydro dispatch formula mismatch.** `dispatch_frac = 0.20 + 0.50 * price_norm` yields 20%–70%, but the comment says "60% to 90%". Earlier commented-out profiles used 0.55–0.90 range. **Fix:** Change to `dispatch_frac = 0.60 + 0.30 * price_norm`.
+
+3. **Last-period free energy exploit.** SOC dynamics cover `t=1:T-1`, so `P_ch_B(T)` and `P_dis_B(T)` participate in the power balance but have zero SOC impact. The optimizer can discharge at `t=T` for free electricity. **Fix:** Add `W_B(T+1)` state variable with dynamics for `t=T`, apply cyclic constraint to `W_B(T+1)`. Same for BTES.
+
+### INCONSISTENCIES
+
+4. **File header omits Sildvik (63 MW).** Header lists only Hakvik + Batsvatn = 39.9 MW; code uses 102.9 MW total hydro.
+
+5. **`T=24` defined in both script preamble and inside `load_Narvik_data()`.** Redundant; could silently diverge.
+
+### NUMERICAL
+
+6. **BigM variable bounds too large.** `BigM_elec = 1e6` MW for upper bounds on continuous variables (actual values ~10–100 MW). Use physically meaningful bounds instead.
+
+7. **Redundant waste heat inequality constraints.** Already enforced by `ub(idx.H_WH) = H_WH_avail`.
+
+### VERIFIED CORRECT
+
+- SOC dynamics signs (charge adds, discharge removes with efficiency)
+- Electrical and thermal power balance equations
+- Heat pump coupling (COP * P_HP = H_HP)
+- Candidate selection (sum y = 1)
+- C-rate, big-M indicator, no-simultaneous-charge/discharge constraints
+- SOC bounds via candidate linkage
+- Cyclic SOC with tolerance
+- Objective function (CRF annualization + O&M + operational)
+- Variable indexing, integer variable IDs, zero-candidate handling
+- Cost breakdown in results section
+
+## Key Data Sources
+
+| Profile | Primary Source | Fallback |
+|---------|---------------|----------|
+| Wind | Renewables.ninja (MERRA-2) | Synthetic winter CF profile |
+| Price | Nord Pool NO4 day-ahead | Synthetic NO4 winter pattern |
+| Load | ENTSO-E Transparency (NO4) | Synthetic Nordic load pattern |
+| Heat | When2Heat (Open Power System Data) | Degree-day method (yr.no temps) |
+| Hydro | ENTSO-E generation (NO4) | Price-responsive dispatch model |
+
+## Key Parameters
+
+| Parameter | Value | Unit | Source |
+|-----------|-------|------|--------|
+| BESS efficiency | 0.95 | one-way | Tesla Megapack |
+| BESS SOC limits | 0.20–0.80 | fraction | Table 2 |
+| BESS C-rate | 0.50 | 1/h | Megapack spec |
+| BESS cost | 285 | $/kWh | Tesla Megapack Design |
+| BESS lifetime | 15 | years | Tesla Megapack Design |
+| BTES efficiency | 0.85 | one-way | HT-BTES factsheet |
+| BTES SOC limits | 0.10–0.90 | fraction | HT-BTES factsheet |
+| BTES C-rate | 0.20 | 1/h | Arctic assumption |
+| BTES cost | 0.60 | $/kWhth | HT-BTES factsheet |
+| BTES lifetime | 30 | years | HT-BTES factsheet |
+| Heat pump COP | 3.0 | — | Arctic average |
+| Waste heat coeff | 0.70 | fraction | Assumption |
+| Discount rate | 6% | — | Standard |
+| Curtailment penalty | 50 | $/MWh | Assumption |
+| Unmet heat penalty | 2000 | $/MWhth | Literature |
+
+## Conventions for AI Assistants
+
+- **MATLAB style:** No classes/OOP — single-script procedural style with index structs.
+- **Units:** Electrical in MW/MWh, thermal in MWth/MWhth, cost in $/yr.
+- **Commented-out code:** Large blocks of commented alternatives exist for reference; do not delete without asking.
+- **Data notes:** Comments with "NEED TO LOOK FOR REAL DATA" indicate parameters awaiting validation.
+- Always verify constraint signs against the mathematical formulation comments above each block.
+- Test with T=24 before attempting T=8760 (annual horizon).
+
+## Git Workflow
+
+- AI branches: `claude/<task-slug>-<session-id>`
+- Commit format: `<type>: <summary>` (types: `feat`, `fix`, `docs`, `refactor`)
+- Push: `git push -u origin <branch>`, retry on network failure (4x exponential backoff).
+
 ---
 
-## Code Style & Conventions
-
-[TODO: Document linting, formatting, and style rules once tooling is configured.]
-
-- Prefer descriptive variable names over abbreviations.
-- Keep functions small and single-purpose.
-- Do not introduce security vulnerabilities (SQL injection, XSS, command injection, etc.).
-- Avoid over-engineering: build only what the current task requires.
-
----
-
-## CI/CD
-
-[TODO: Document CI/CD pipeline once GitHub Actions or equivalent is configured.]
-
----
-
-## Key Principles for AI Assistants
-
-1. **Read before modifying** — always read a file before editing it.
-2. **Minimal changes** — only change what is directly requested or clearly necessary.
-3. **No unnecessary files** — do not create files that aren't needed for the task.
-4. **Security first** — never introduce vulnerabilities; validate at system boundaries.
-5. **Ask before destructive actions** — confirm before `git reset --hard`, force-push, deleting files, or other irreversible operations.
-6. **Stay on the designated branch** — develop on the branch specified in the task; never push to another branch without explicit permission.
-7. **Update this file** — when new tools, workflows, or conventions are established, update the relevant sections above.
-
----
-
-*Last updated: 2026-03-03 — Initial creation on empty repository.*
+*Last updated: 2026-03-03 — Full project analysis and code review.*
