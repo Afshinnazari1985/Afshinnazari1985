@@ -243,7 +243,10 @@ P_supply_max = max(P_wind) + max(P_hydro) + gamma_B * max(EB_cand);
 P_demand_max = max(P_load) + P_DC + max(H_dem)/COP_HP + gamma_B * max(EB_cand);
 ub(idx.P_buy)     = P_demand_max;                 % physically bounded grid purchase
 ub(idx.P_curt)    = P_supply_max;                 % bounded by max generation
-ub(idx.H_unmet)   = max(H_dem);                   % bounded by peak demand
+% H_unmet: no upper bound — pen_unmet=$2000/MWh keeps it near zero in optimal
+% solutions. A hard cap of max(H_dem) would cause implicit infeasibility when
+% large BTES charges compete with heat demand (H_unmet needed > cap).
+% ub left at inf (default); lower bound = 0 is enforced by lb.
 
 %% ================== 7. OBJECTIVE FUNCTION ===============================
 % min  CRF_B*(C_EB*1000)*E_B + CRF_TES*(C_ETES*1000)*E_TES   [investment, $/yr]
@@ -390,7 +393,8 @@ fprintf('Equality constraints: %d\n', nEq);
 
 %% ================== 9. INEQUALITY CONSTRAINTS (A*x <= b) ================
 % Pre-allocate generously
-maxIneq = 16*T + 50;
+% Count: 7T+3 BESS + 4 new BESS end-state bounds + 7T+3 BTES + 4 new BTES end-state + 2T coord + buffer
+maxIneq = 16*T + 58;
 A_rows  = zeros(maxIneq, nVars);
 b_vals  = zeros(maxIneq, 1);
 nIneq   = 0;
@@ -462,8 +466,21 @@ for t = 1:T
     b_vals(nIneq) = 0;
 end
 
-% (9) Cyclic SOC on W_B_end (corrected: uses state AFTER period T)
-%     (SOC_init - tol)*E_B <= W_B_end <= (SOC_init + tol)*E_B
+% (9) SOC bounds on W_B_end (end-of-day state, after period T)
+%     Explicit min/max bounds prevent SOC_tol from pushing end state outside
+%     physical limits if SOC_tol is ever increased beyond 0.30.
+%     Lower: W_B_end >= SOC_B_min * E_B
+nIneq = nIneq + 1;
+A_rows(nIneq, idx.y_B)     =  SOC_B_min * EB_cand;
+A_rows(nIneq, idx.W_B_end) = -1;
+b_vals(nIneq) = 0;
+%     Upper: W_B_end <= SOC_B_max * E_B
+nIneq = nIneq + 1;
+A_rows(nIneq, idx.W_B_end) =  1;
+A_rows(nIneq, idx.y_B)     = -SOC_B_max * EB_cand;
+b_vals(nIneq) = 0;
+
+% (10) Cyclic SOC on W_B_end: (SOC_init - tol)*E_B <= W_B_end <= (SOC_init + tol)*E_B
 nIneq = nIneq + 1;
 A_rows(nIneq, idx.y_B)      =  (SOC_B_init - SOC_tol) * EB_cand;
 A_rows(nIneq, idx.W_B_end)  = -1;
@@ -550,7 +567,19 @@ for t = 1:T
     b_vals(nIneq) = 0;
 end
 
-% (19) Cyclic SOC on W_TES_end (corrected: uses state AFTER period T)
+% (19) SOC bounds on W_TES_end (end-of-day state, after period T)
+%     Lower: W_TES_end >= SOC_TES_min * E_TES
+nIneq = nIneq + 1;
+A_rows(nIneq, idx.y_TES)     =  SOC_TES_min * ETES_cand;
+A_rows(nIneq, idx.W_TES_end) = -1;
+b_vals(nIneq) = 0;
+%     Upper: W_TES_end <= SOC_TES_max * E_TES
+nIneq = nIneq + 1;
+A_rows(nIneq, idx.W_TES_end) =  1;
+A_rows(nIneq, idx.y_TES)     = -SOC_TES_max * ETES_cand;
+b_vals(nIneq) = 0;
+
+% (20) Cyclic SOC on W_TES_end
 nIneq = nIneq + 1;
 A_rows(nIneq, idx.y_TES)      =  (SOC_TES_init - SOC_tol) * ETES_cand;
 A_rows(nIneq, idx.W_TES_end)  = -1;
@@ -1026,14 +1055,30 @@ fprintf('  Price: %.1f-%.1f $/MWh (avg %.1f $/MWh)\n', ...
 
 % Data source status
 fprintf('\n  DATA SOURCES:\n');
-files   = {wind_file, price_file, load_file, heat_file, hydro_file};
+% For load: OPSD file takes priority over ENTSO-E direct export
+if isfile(opsd_file)
+    load_source = 'OPSD Zenodo 8423312 [S3]';
+    load_real   = true;
+elseif isfile(load_file)
+    load_source = 'ENTSO-E Load [S3]';
+    load_real   = true;
+else
+    load_source = 'ENTSO-E Load [S3]';
+    load_real   = false;
+end
+files   = {wind_file, price_file, '',        heat_file, hydro_file};
 sources = {'Renewables.ninja [S1]', 'Nord Pool NO4 [S2]', ...
-           'ENTSO-E Load [S3]', 'When2Heat [S4]', 'ENTSO-E Hydro [S5]'};
+           load_source, 'When2Heat [S4]', 'ENTSO-E Hydro [S5]'};
 for i = 1:5
-    if isfile(files{i})
-        fprintf('    %-26s  REAL DATA\n', sources{i});
+    if i == 3
+        status = load_real;
     else
-        fprintf('    %-26s  SYNTHETIC\n', sources{i});
+        status = isfile(files{i});
+    end
+    if status
+        fprintf('    %-30s  REAL DATA\n', sources{i});
+    else
+        fprintf('    %-30s  SYNTHETIC\n', sources{i});
     end
 end
 fprintf('--------------------------------------------------------------\n\n');
