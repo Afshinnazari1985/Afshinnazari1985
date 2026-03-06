@@ -878,8 +878,49 @@ else
 end
 
 %% 3. ELECTRICAL LOAD
+% Supported file formats (checked in priority order):
+%   1. 'time_series_60min_singleindex.csv'  — OPSD Time Series (Zenodo 8423312)
+%      Column: 'NO_4_load_actual_entsoe_transparency' [MW], time: 'utc_timestamp'
+%   2. 'entsoe_NO4_load_2024.csv'           — ENTSO-E Transparency direct export
+%      Columns: 'ActualTotalLoad' or 'Value' [MW]
+opsd_file = 'time_series_60min_singleindex.csv';   % OPSD / Zenodo 8423312
 load_file = 'entsoe_NO4_load_2024.csv';
-if isfile(load_file)
+scale_factor = 0.055;   % NO4 region → Narvik grid (pop. 18,700 + LKAB industrial)
+
+if isfile(opsd_file)
+    fprintf('  Load:  Loading from OPSD time series CSV (Zenodo 8423312)...\n');
+    % VariableNamingRule 'preserve' keeps underscores and dots in column names
+    data_load = readtable(opsd_file, 'VariableNamingRule', 'preserve');
+
+    opsd_col = 'NO_4_load_actual_entsoe_transparency';
+    if ismember(opsd_col, data_load.Properties.VariableNames)
+        load_NO4 = data_load.(opsd_col);
+    else
+        % Fallback: first numeric column (some OPSD exports differ slightly)
+        numcols  = varfun(@isnumeric, data_load, 'OutputFormat', 'uniform');
+        load_NO4 = data_load{:, find(numcols, 1)};
+        fprintf('  [WARN] Column ''%s'' not found; using first numeric column.\n', opsd_col);
+    end
+
+    % OPSD data often contains NaN gaps — fill by linear interpolation
+    t_idx  = (1:numel(load_NO4))';
+    valid  = ~isnan(load_NO4);
+    if any(~valid)
+        load_NO4 = interp1(t_idx(valid), load_NO4(valid), t_idx, 'linear', 'extrap');
+        fprintf('         Interpolated %d NaN gaps in NO4 load.\n', sum(~valid));
+    end
+
+    % Use first 744 hours (January) — representative Arctic winter day
+    if numel(load_NO4) < 744
+        error('OPSD file too short: need ≥744 rows for January average, got %d.', numel(load_NO4));
+    end
+    load_jan    = load_NO4(1:744);
+    load_winter = mean(reshape(load_jan, 24, []), 2);   % 24×1 hourly average
+    P_load      = load_winter * scale_factor;
+    fprintf('         NO4 Jan avg: %.0f - %.0f MW  →  Narvik (×%.3f): %.1f - %.1f MW\n', ...
+        min(load_winter), max(load_winter), scale_factor, min(P_load), max(P_load));
+
+elseif isfile(load_file)
     fprintf('  Load:  Loading from ENTSO-E CSV...\n');
     data_load = readtable(load_file);
     if ismember('ActualTotalLoad', data_load.Properties.VariableNames)
@@ -887,18 +928,19 @@ if isfile(load_file)
     elseif ismember('Value', data_load.Properties.VariableNames)
         load_NO4 = data_load.Value;
     else
-        numcols = varfun(@isnumeric, data_load, 'OutputFormat', 'uniform');
+        numcols  = varfun(@isnumeric, data_load, 'OutputFormat', 'uniform');
         load_NO4 = data_load{:, find(numcols, 1)};
     end
-    load_jan = load_NO4(1:744);
+    load_jan    = load_NO4(1:744);
     load_winter = mean(reshape(load_jan, 24, []), 2);
-    scale_factor = 0.055;   % NO4 → Narvik (pop. 18,700 + LKAB industrial)
-    P_load = load_winter * scale_factor;
-    fprintf('         Narvik scaled (×%.3f): %.1f - %.1f MW\n', ...
-        scale_factor, min(P_load), max(P_load));
+    P_load      = load_winter * scale_factor;
+    fprintf('         Narvik scaled (×%.3f): %.1f - %.1f MW\n', scale_factor, min(P_load), max(P_load));
+
 else
-    fprintf('  Load:  [SYNTHETIC] CSV not found.\n');
-    fprintf('         Download: https://transparency.entsoe.eu/ (NO4, 2024)\n');
+    fprintf('  Load:  [SYNTHETIC] No CSV found.\n');
+    fprintf('         Option 1 (OPSD): https://zenodo.org/records/8423312\n');
+    fprintf('                          File: time_series_60min_singleindex.csv\n');
+    fprintf('         Option 2 (ENTSO-E): https://transparency.entsoe.eu/ (NO4, 2024)\n');
     % Nordic load pattern: morning ramp 06-09, evening peak 17-20
     P_load = [22 21 21 21 22 25 30 35 38 40 41 40 ...
               39 38 37 36 38 42 44 43 40 35 28 24]';
