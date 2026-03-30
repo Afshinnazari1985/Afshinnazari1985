@@ -16,6 +16,12 @@
 %   plot_results(res, params, T)
 
 clc; clear; close all;
+
+% Ensure paths are set relative to project root
+projectRoot = fileparts(fileparts(mfilename('fullpath')));
+addpath(fullfile(projectRoot, 'src'));
+cd(projectRoot);
+
 fprintf('==============================================================\n');
 fprintf('  MILP Sizing of BESS & BTES — Narvik AI Data Center System\n');
 fprintf('==============================================================\n\n');

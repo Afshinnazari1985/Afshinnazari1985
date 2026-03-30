@@ -30,17 +30,31 @@ Modified IEEE 14-bus grid in Narvik, Norway. Key components:
 
 ```
 /
-├── MILP_BESS_BTES_Narvik.m          # Main optimization script (single file)
-├── load_Narvik_data.m                # Data loading function (to be extracted)
-├── ninja_wind_68.4500_17.3900_corrected.csv   # [Optional] Renewables.ninja wind data
-├── nordpool_NO4_2024.csv             # [Optional] Nord Pool electricity prices
-├── entsoe_NO4_load_2024.csv          # [Optional] ENTSO-E load data
-├── when2heat_singleindex.csv         # [Optional] When2Heat heating demand
-├── entsoe_NO4_hydro_2024.csv         # [Optional] ENTSO-E hydro generation
-└── CLAUDE.md                         # This file
+├── src/                              # MATLAB source code
+│   ├── main_MILP.m                   # Main driver script (run this)
+│   ├── setup_parameters.m            # Model parameters and candidates
+│   ├── load_Narvik_data.m            # Data loading with CSV/synthetic fallback
+│   ├── build_variables.m             # Decision variable indexing and bounds
+│   ├── build_objective.m             # Objective function construction
+│   ├── build_eq_constraints.m        # Equality constraints
+│   ├── build_ineq_constraints.m      # Inequality constraints
+│   ├── extract_results.m             # Solution extraction and cost breakdown
+│   ├── plot_results.m                # Results visualization
+│   ├── plot_input_profiles.m         # Input data overview plots
+│   └── MILP_BESS_BTES_Narvik.m       # Legacy single-file version
+├── data/                             # Input CSV data files
+│   ├── ninja_wind_*.csv              # Renewables.ninja wind data
+│   ├── NO4_prices_*.csv              # Nord Pool electricity prices
+│   ├── nordpool_NO4_*.csv            # Nord Pool price data
+│   └── GUI_TOTAL_LOAD_*.csv          # ENTSO-E load data
+├── docs/                             # Documentation and figures
+├── CLAUDE.md                         # This file
+├── CITATION.cff                      # Citation metadata
+├── LICENSE                           # MIT License
+└── README.md                         # Project documentation
 ```
 
-CSV files are optional — the code falls back to synthetic profiles if absent.
+CSV data files are optional — the code falls back to synthetic profiles if absent.
 
 ## MILP Formulation Summary
 
@@ -65,8 +79,8 @@ CSV files are optional — the code falls back to synthetic profiles if absent.
 Requires MATLAB with Optimization Toolbox.
 
 ```matlab
-% Open MATLAB, navigate to project directory, then:
-run('MILP_BESS_BTES_Narvik.m')
+% Open MATLAB, navigate to project root, then:
+run('src/main_MILP.m')
 ```
 
 Solver settings: `intlinprog` with 600s time limit, 1% relative gap tolerance, advanced preprocessing.

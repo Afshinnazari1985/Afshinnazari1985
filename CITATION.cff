@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "MILP Optimal Sizing of BESS and BTES for a Narvik Arctic Microgrid with AI Data Center"
+authors:
+  - family-names: "Nazari"
+    given-names: "Afshin"
+    affiliation: "UiT The Arctic University of Norway"
+repository-code: "https://github.com/afshinnazari1985/afshinnazari1985"
+license: MIT
+date-released: "2026-03-30"
+keywords:
+  - MILP
+  - battery energy storage
+  - borehole thermal energy storage
+  - optimal sizing
+  - energy management
+  - arctic microgrid
+  - AI data center
+  - district heating
+  - waste heat recovery
+  - renewable energy integration
+abstract: >-
+  Mixed-Integer Linear Programming model for optimal co-sizing of Battery
+  Energy Storage Systems (BESS) and Borehole Thermal Energy Storage (BTES)
+  integrated with an AI data center on a modified IEEE 14-bus Arctic
+  distribution grid in Narvik, Northern Norway. The model jointly optimizes
+  electrical and thermal energy management considering wind, hydro, grid
+  purchase, heat pump, and waste heat recovery.

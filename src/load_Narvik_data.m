@@ -17,7 +17,7 @@ fprintf('--------------------------------------------------------------\n');
 % %% 1. WIND PROFILE- https://www.renewables.ninja/
 P_wind_nameplate = 32.2;  % MW [Nygårdsfjellet]
 
-wind_file = 'ninja_wind_68.5039_17.8894_new.csv';
+wind_file = fullfile('data', 'ninja_wind_68.5039_17.8894_new.csv');
 if isfile(wind_file)
     fprintf('  Wind:  Loading from Renewables.ninja CSV...\n');
     data_wind = readtable(wind_file, 'HeaderLines', 3);
@@ -40,7 +40,7 @@ end
 
 
 % %% 2. PRICE PROFILE
-% price_file = 'NO4_prices_from_chart_image_15min.csv';
+% price_file = fullfile('data', 'NO4_prices_from_chart_image_15min.csv');
 % if isfile(price_file)
 %     fprintf('  Price: Loading from Nord Pool CSV...\n');
 %     data_price = readtable(price_file);
@@ -70,7 +70,7 @@ end
 
 
 %% 2. PRICE PROFILE - https://data.nordpoolgroup.com/auction/day-ahead/prices?deliveryDate=2026-02-01&currency=EUR&aggregation=DeliveryPeriod&deliveryAreas=NO4
-price_file = 'NO4_prices_from_chart_image_15min.csv';
+price_file = fullfile('data', 'NO4_prices_from_chart_image_15min.csv');
 if isfile(price_file)
     fprintf('  Price: Loading from Nord Pool NO4 CSV (15-min resolution)...\n');
     data_price = readtable(price_file, 'Delimiter', ',', 'ReadVariableNames', false, 'HeaderLines', 1);
@@ -105,7 +105,7 @@ else
 end
 
 %% 3. ELECTRICAL LOAD PROFILE
-load_file = 'entsoe_NO4_load_2024.csv';
+load_file = fullfile('data', 'entsoe_NO4_load_2024.csv');
 if isfile(load_file)
     fprintf('  Load:  Loading from ENTSO-E CSV...\n');
     data_load = readtable(load_file);
@@ -134,7 +134,7 @@ else
 end
 
 %% 4. HEAT DEMAND PROFILE
-heat_file = 'when2heat_singleindex.csv';
+heat_file = fullfile('data', 'when2heat_singleindex.csv');
 if isfile(heat_file)
     fprintf('  Heat:  Loading from When2Heat CSV...\n');
     data_heat = readtable(heat_file);
@@ -169,7 +169,7 @@ P_hydro_hakvik   = 9.9;    % MW [Nordkraft, local distribution]
 P_Sildvik = 63;            % transmission-level plant, exports to national grid
 P_hydro_total    = P_hydro_hakvik +P_Sildvik;  % = 39.9 MW
 
-hydro_file = 'entsoe_NO4_hydro_2024.csv';
+hydro_file = fullfile('data', 'entsoe_NO4_hydro_2024.csv');
 if isfile(hydro_file)
     fprintf('  Hydro: Loading from ENTSO-E CSV...\n');
     data_hydro = readtable(hydro_file);

@@ -1,0 +1,40 @@
+# MATLAB
+*.asv
+*.m~
+*.mex*
+*.mlappinstall
+*.mlpkginstall
+slprj/
+sccprj/
+codegen/
+
+# Simulink
+*.slxc
+*.autosave
+
+# MATLAB generated files
+*.fig
+*.mat
+*.mdl.r*
+helpsearch*/
+
+# Build artifacts
+*.o
+*.obj
+*.exe
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Large data files (uncomment if needed)
+# data/*.csv
